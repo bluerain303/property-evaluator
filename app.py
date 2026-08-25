@@ -259,10 +259,8 @@ if submit_btn or (url_input and st.session_state.get("last_url") != url_input):
 if st.session_state["report"]:
     report_text = st.session_state["report"]
     st.divider()
-    left, right = st.columns([5, 1])
+    left, right = st.columns([1, 1])
     with left:
-        st.markdown(report_text, unsafe_allow_html=True)
-    with right:
         if st.button("保存结果", use_container_width=True):
             try:
                 sheet_db.append_evaluation(
@@ -273,7 +271,7 @@ if st.session_state["report"]:
                 st.success("已保存到 Google Sheet")
             except Exception as ex:
                 st.error(f"保存到 Google Sheet 失败: {str(ex)}")
-
+    with right:
         # 复制按钮：将结果复制到剪切板并给出提示
         copy_label = "复制结果"
         if st.button(copy_label, use_container_width=True):
@@ -339,6 +337,9 @@ if st.session_state["report"]:
             """
             data_url = 'data:text/html;charset=utf-8,' + urllib.parse.quote(html)
             st.iframe(data_url, height=160)
+    st.divider()
+    st.markdown(report_text, unsafe_allow_html=True)
+
 elif st.session_state["evaluation_error"]:
     st.error(f"错误详情：{st.session_state['evaluation_error']}")
     st.info("建议：\n- 检查 URL 是否正确\n- 检查 API Key 是否填写正确\n- 更换其他模型后重试\n- 若是网络问题，稍后再试")
