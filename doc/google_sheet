@@ -1,0 +1,100 @@
+
+
+
+在本地开发阶段，将 Streamlit 连接到 Google Sheets 需要通过 Google Cloud Platform (GCP) 获取一个“服务账号 (Service Account)”，相当于给你的代码发一个专属的通行证。
+
+以下是在本地 VS Code 环境中从零配置并连接的完整步骤：
+
+## 1. 获取 Google 官方 API 凭证
+
+这是最关键的准备工作，目的是让代码有权限读写表格。
+
+1. 登录 [Google Cloud Console](https://console.cloud.google.com/)，点击左上角新建一个项目（例如命名为 `property-evaluator`）。
+2. 在左侧菜单进入 **“API 和服务” -> “启用 API 和服务”**。
+3. 搜索并依次启用两个 API：**Google Sheets API** 和 **Google Drive API**。
+4. 返回左侧菜单，进入 **“凭据”**，点击顶部的 **“创建凭据” -> “服务账号”**。
+5. 随便填一个名称（如 `streamlit-bot`）并完成创建。
+6. 在凭据列表中点击刚创建的服务账号，进入 **“密钥”** 选项卡。
+7. 点击 **“添加密钥” -> “创建新密钥”**，选择 **JSON** 格式。这会自动下载一个 `.json` 文件到你的电脑，**妥善保存它，不要发给任何人**。
+/Users/yishi/Library/Mobile Documents/com~apple~CloudDocs/Streamlit
+property-evaluation-506619-aad803bcdb84.json
+
+## 2. 准备 Google 表格并“授权”
+
+代码虽然有了通行证，但还需要你手动把具体的表格分享给它。
+
+1. 在你的 Google Drive 中新建一个 Google Sheets，命名为“卢森堡看房记录”。
+2. 在第一行设置好表头：`Date` | `URL` | `Model` | `Report`。
+3. 打开刚刚下载的 `.json` 文件，找到 `client_email` 这一行，复制那个长长的邮箱地址（类似 `xxx@xxx.iam.gserviceaccount.com`）。
+4. 回到 Google 表格，点击右上角的 **“共享” (Share)**，把这个邮箱地址粘贴进去，并将权限设置为 **“编辑者” (Editor)**。
+
+## 3. 在本地配置 Streamlit Secrets
+
+Streamlit 有专门的机制来本地管理密码，防止不小心传到网上。
+
+1. 在你的项目根目录下（即 `app.py` 所在的文件夹），新建一个隐藏文件夹 `.streamlit`。
+2. 在该文件夹内新建一个文件 `secrets.toml`。
+3. 将下载的 JSON 文件内容按以下格式转换并填入 `secrets.toml` 中（注意 `private_key` 中的 `\n` 必须保留）：
+
+```toml
+# .streamlit/secrets.toml
+[connections.gsheets]
+type = "service_account"
+project_id = "你的_project_id"
+private_key_id = "你的_private_key_id"
+private_key = "-----BEGIN PRIVATE KEY-----\n你的私钥内容\n-----END PRIVATE KEY-----\n"
+client_email = "你的_client_email"
+client_id = "你的_client_id"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "你的_client_x509_cert_url"
+
+```
+
+## 4. 编写代码进行连接测试
+
+首先，在你的终端里安装官方连接器库：
+
+```bash
+pip install st-gsheets-connection
+
+```
+
+然后在 `app.py` 中编写以下测试代码。你可以将你创建的 Google 表格的公开链接直接传入。
+
+```python
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+
+# 1. 建立连接
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# 你的表格分享链接（从浏览器地址栏复制）
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的表格ID/edit"
+
+# 2. 读取当前数据
+st.write("正在读取云端表格...")
+existing_data = conn.read(spreadsheet=SHEET_URL, worksheet="Sheet1")
+st.dataframe(existing_data)
+
+# 3. 写入测试数据 (点击按钮触发)
+if st.button("写入一条测试数据"):
+    new_row = pd.DataFrame([{
+        "Date": "2026-08-25",
+        "URL": "https://www.athome.lu/test",
+        "Model": "Gemini",
+        "Report": "这是一个本地写入测试"
+    }])
+    
+    # 将新行追加到现有数据后
+    updated_data = pd.concat([existing_data, new_row], ignore_index=True)
+    
+    # 更新回 Google Sheets
+    conn.update(worksheet="Sheet1", data=updated_data)
+    st.success("数据已成功写入 Google Sheets！请去网页端查看。")
+
+```
+
+按照这个流程，当你在本地运行 `streamlit run app.py` 时，程序就会通过你配置好的本地 `.streamlit/secrets.toml` 文件，成功读写云端的 Google 表格。

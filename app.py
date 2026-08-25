@@ -7,7 +7,13 @@ from llm_service import evaluate_property
 import prompts_store
 import json
 import urllib.parse
+from google_sheet_connector import GoogleSheetConnector
 
+
+# 你的 Google Sheet 链接（替换成实际表格 URL）
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1x05RYM38r_vWpE8OE0eCVygzwOIA6jIesBwR5HY9fDk/edit"
+# 初始化连接器实例
+sheet_db = GoogleSheetConnector(spreadsheet_url=SHEET_URL, worksheet="HistoryV1")
 
 def run_with_retry(task_name: str, func, max_retries: int = 2, delay_seconds: float = 1.5):
     """执行任务并在失败时自动重试，保留最终异常详情。"""
@@ -245,7 +251,6 @@ if submit_btn or (url_input and st.session_state.get("last_url") != url_input):
                     st.session_state["evaluation_error"] = "AI 未返回有效评估内容，请稍后重试或更换模型。"
                 else:
                     st.session_state["report"] = report_text
-
             except Exception as ex:
                 status.update(label="❌ 处理失败", state="error", expanded=True)
                 st.session_state["evaluation_error"] = str(ex)
@@ -258,6 +263,17 @@ if st.session_state["report"]:
     with left:
         st.markdown(report_text, unsafe_allow_html=True)
     with right:
+        if st.button("保存结果", use_container_width=True):
+            try:
+                sheet_db.append_evaluation(
+                    url=url_input,
+                    model_name=model_provider,
+                    report=report_text,
+                )
+                st.success("已保存到 Google Sheet")
+            except Exception as ex:
+                st.error(f"保存到 Google Sheet 失败: {str(ex)}")
+
         # 复制按钮：将结果复制到剪切板并给出提示
         copy_label = "复制结果"
         if st.button(copy_label, use_container_width=True):
