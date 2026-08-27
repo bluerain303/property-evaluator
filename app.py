@@ -1,4 +1,5 @@
-# app.py
+import hmac
+import os
 import time
 
 import streamlit as st
@@ -45,6 +46,15 @@ st.markdown("输入 `athome.lu` / `wortimmo.lu` 等房源链接，一键生成�
 
 # 侧边栏：模型配置
 with st.sidebar:
+
+    passcode = st.text_input(
+        "访问口令",
+        type="password",
+        help="请输入访问口令"
+    )
+    expected_passcode = os.getenv("PASSCODE", "")
+    access_granted = bool(expected_passcode) and hmac.compare_digest(passcode, expected_passcode)
+
     st.header("⚙️ 模型配置")
     
     model_provider = st.selectbox(
@@ -59,10 +69,11 @@ with st.sidebar:
         index=0,
         help="支持各主流模型统一接口"
     )
-    
+
     custom_api_key = st.text_input(
         "API Key (留空则默认读取 .env)",
         type="password",
+        disabled=not access_granted,
         help="可临时手动填入对应的 API Key"
     )
 
@@ -75,6 +86,7 @@ with st.sidebar:
         "选择要使用的 System Prompt：",
         options=["使用系统默认提示词", "使用自定义提示词"],
         index=default_choice_index,
+        disabled=not access_granted,
         help="选择后，评估将使用对应的 System Prompt。"
     )
 
@@ -93,6 +105,7 @@ with st.sidebar:
         options=prompt_names or ["(无可用提示词，检查 prompts.json)"],
         index=prompt_names.index(st.session_state["selected_prompt_name"]) if prompt_names and st.session_state.get("selected_prompt_name") in prompt_names else 0,
         help="选择一个系统内置的 Prompt，内容会显示在下方只读框中",
+        disabled=not access_granted,
         key="selected_prompt_name"
     )
 
@@ -111,16 +124,17 @@ with st.sidebar:
         value=st.session_state.get("system_prompt", ""),
         key="system_prompt",
         height=150,
+        disabled=not access_granted,
         help="在此输入自定义提示词；选中后将覆盖系统默认提示词。"
     )
 
     st.subheader("保存当前 Prompt")
-    new_prompt_name = st.text_input("新 Prompt 名称（用于保存）", value="", help="为要保存的系统 Prompt 输入一个唯一名字。", key="new_prompt_name")
-    overwrite_existing = st.checkbox("若同名则覆盖已存在的 Prompt", value=False, key="overwrite_prompt")
+    new_prompt_name = st.text_input("新 Prompt 名称（用于保存）", value="", disabled=not access_granted, help="为要保存的系统 Prompt 输入一个唯一名字。", key="new_prompt_name")
+    overwrite_existing = st.checkbox("若同名则覆盖已存在的 Prompt", value=False, disabled=not access_granted, key="overwrite_prompt")
 
     # 两个保存按钮：把当前自定义保存为系统 prompt；或把当前只读默认prompt另存为新条目
-    save_custom_btn = st.button("把当前自定义保存为系统 Prompt")
-    save_default_btn = st.button("把当前选中系统 Prompt 另存为新 Prompt")
+    save_custom_btn = st.button("把当前自定义保存为系统 Prompt", disabled=not access_granted)
+    save_default_btn = st.button("把当前选中系统 Prompt 另存为新 Prompt", disabled=not access_granted)
 
     if save_custom_btn or save_default_btn:
         # 决定要保存的内容来源
@@ -191,10 +205,11 @@ with col1:
     url_input = st.text_input(
         "房源 URL 地址",
         placeholder="https://www.athome.lu/vente/appartement/...",
+        disabled=not access_granted,
         label_visibility="collapsed"
     )
 with col2:
-    submit_btn = st.button("🚀 开始评估", use_container_width=True, type="primary")
+    submit_btn = st.button("🚀 开始评估", use_container_width=True, type="primary", disabled=not access_granted)
 
 if "report" not in st.session_state:
     st.session_state["report"] = ""
@@ -205,7 +220,7 @@ if "system_prompt" not in st.session_state:
     st.session_state["system_prompt"] = ""
 
 # 触发评估逻辑
-if submit_btn or (url_input and st.session_state.get("last_url") != url_input):
+if access_granted and (submit_btn or (url_input and st.session_state.get("last_url") != url_input)):
     if not url_input.strip():
         st.warning("⚠️ 请先输入房源网址！")
     else:
@@ -261,7 +276,7 @@ if st.session_state["report"]:
     st.divider()
     left, right = st.columns([1, 1])
     with left:
-        if st.button("保存结果", use_container_width=True):
+        if st.button("保存结果", use_container_width=True, disabled=not access_granted):
             try:
                 sheet_db.append_evaluation(
                     url=url_input,
@@ -274,7 +289,7 @@ if st.session_state["report"]:
     with right:
         # 复制按钮：将结果复制到剪切板并给出提示
         copy_label = "复制结果"
-        if st.button(copy_label, use_container_width=True):
+        if st.button(copy_label, use_container_width=True, disabled=not access_granted):
             # 使用 st.iframe 嵌入一个 data URL 的小页面来执行复制动作（替代 components.html）
             safe_text = json.dumps(report_text)
             html = f"""
