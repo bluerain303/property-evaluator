@@ -5,7 +5,6 @@ import time
 import streamlit as st
 from scraper import extract_listing_content
 from llm_service import evaluate_property
-import prompts_store
 import json
 import urllib.parse
 from google_sheet_connector import GoogleSheetConnector
@@ -15,6 +14,11 @@ from google_sheet_connector import GoogleSheetConnector
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1x05RYM38r_vWpE8OE0eCVygzwOIA6jIesBwR5HY9fDk/edit"
 # 初始化连接器实例
 sheet_db = GoogleSheetConnector(spreadsheet_url=SHEET_URL, worksheet="HistoryV1")
+
+# 你的 Google Sheet 链接（替换成实际表格 URL）
+SHEET_URL_PROMPTS = "https://docs.google.com/spreadsheets/d/1tcgcfuo86BCzjmNcwXpuwAXKdbZAAKv6SGZoFe34ddQ/edit"
+# 初始化连接器实例
+sheet_db_prompts = GoogleSheetConnector(spreadsheet_url=SHEET_URL_PROMPTS, worksheet="Prompts")
 
 def run_with_retry(task_name: str, func, max_retries: int = 2, delay_seconds: float = 1.5):
     """执行任务并在失败时自动重试，保留最终异常详情。"""
@@ -90,15 +94,26 @@ with st.sidebar:
         help="选择后，评估将使用对应的 System Prompt。"
     )
 
-    # 从 prompts_store 中读取可用的系统 prompt 列表（下拉菜单）
-    prompt_names = prompts_store.list_prompt_names()
+    # 从 Google Sheet 中读取可用的系统 Prompt 列表
+    try:
+        prompt_df = sheet_db_prompts.read_prompts(ttl=0)
+        prompt_map = {
+            str(row["Name"]).strip(): str(row["Prompt"])
+            for _, row in prompt_df.iterrows()
+            if str(row["Name"]).strip() and str(row["Prompt"]).strip()
+        }
+        prompt_names = list(prompt_map)
+    except Exception as ex:
+        prompt_map = {}
+        prompt_names = []
+        st.warning(f"读取 Prompt Google Sheet 失败: {str(ex)}")
 
     # 如果上一次保存后希望选中某个 prompt（在保存按钮处理处设置），先把它移动到 selected_prompt_name
     if "_select_after_save" in st.session_state:
         st.session_state["selected_prompt_name"] = st.session_state.pop("_select_after_save")
 
     if "selected_prompt_name" not in st.session_state:
-        st.session_state["selected_prompt_name"] = prompts_store.default_prompt_name() or (prompt_names[0] if prompt_names else "")
+        st.session_state["selected_prompt_name"] = prompt_names[0] if prompt_names else ""
 
     selected_prompt_name = st.selectbox(
         "选择系统默认 Prompt（下拉）",
@@ -110,7 +125,7 @@ with st.sidebar:
     )
 
     # 底部：只读显示系统默认 prompt（选中条目）
-    default_prompt_content = prompts_store.get_prompt(st.session_state.get("selected_prompt_name")) or ""
+    default_prompt_content = prompt_map.get(st.session_state.get("selected_prompt_name"), "")
     st.text_area(
         "系统默认 Prompt（只读）",
         value=default_prompt_content,
@@ -147,7 +162,8 @@ with st.sidebar:
                 if not name:
                     st.warning("请为新 Prompt 提供一个名称。")
                 else:
-                    success, msg = prompts_store.save_prompt(name, content_to_save, overwrite=overwrite_existing)
+                    success = sheet_db_prompts.save_prompt(name, content_to_save, overwrite=overwrite_existing)
+                    msg = f"Prompt '{name}' 已保存到 Google Sheet。" if success else f"名为 '{name}' 的 prompt 已存在；如需覆盖请勾选覆盖选项。"
                     if success:
                         st.success(msg)
                         # 标记保存后要选中的 prompt，随后重跑页面以重新创建下拉控件
@@ -174,7 +190,8 @@ with st.sidebar:
                 if not name:
                     st.warning("请为新 Prompt 提供一个名称。")
                 else:
-                    success, msg = prompts_store.save_prompt(name, content_to_save, overwrite=overwrite_existing)
+                    success = sheet_db_prompts.save_prompt(name, content_to_save, overwrite=overwrite_existing)
+                    msg = f"Prompt '{name}' 已保存到 Google Sheet。" if success else f"名为 '{name}' 的 prompt 已存在；如需覆盖请勾选覆盖选项。"
                     if success:
                         st.success(msg)
                         st.session_state["_select_after_save"] = name
@@ -245,7 +262,7 @@ if access_granted and (submit_btn or (url_input and st.session_state.get("last_u
                     selected_prompt = sp.strip() if sp and sp.strip() else None
                 else:
                     # 使用下拉选择的系统默认 prompt
-                    selected_prompt = prompts_store.get_prompt(st.session_state.get("selected_prompt_name"))
+                    selected_prompt = prompt_map.get(st.session_state.get("selected_prompt_name"))
 
                 report = run_with_retry(
                     task_name="AI 评估",

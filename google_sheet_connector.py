@@ -57,3 +57,37 @@ class GoogleSheetConnector:
             return True
         except Exception as ex:
             raise RuntimeError(f"写入 Google Sheet 失败: {str(ex)}")
+
+    def read_prompts(self, ttl: int = 0) -> pd.DataFrame:
+        """读取 Prompt Sheet 中的 Name 和 Prompt 两列。"""
+        try:
+            df = self.conn.read(
+                spreadsheet=self.spreadsheet_url,
+                worksheet=self.worksheet,
+                ttl=ttl,
+            )
+            if df is None or df.empty:
+                return pd.DataFrame(columns=["Name", "Prompt"])
+            return df[["Name", "Prompt"]].dropna(subset=["Name"])
+        except Exception as ex:
+            raise RuntimeError(f"读取 Prompt Google Sheet 失败: {str(ex)}") from ex
+
+    def save_prompt(self, name: str, prompt: str, overwrite: bool = False) -> bool:
+        """向 Prompt Sheet 保存一个 Prompt，必要时覆盖同名记录。"""
+        existing_df = self.read_prompts(ttl=0)
+        name_matches = existing_df["Name"].astype(str).str.strip() == name
+        if name_matches.any() and not overwrite:
+            return False
+
+        if name_matches.any():
+            existing_df.loc[name_matches, "Prompt"] = prompt
+        else:
+            new_entry = pd.DataFrame([{"Name": name, "Prompt": prompt}])
+            existing_df = pd.concat([existing_df, new_entry], ignore_index=True)
+
+        self.conn.update(
+            spreadsheet=self.spreadsheet_url,
+            worksheet=self.worksheet,
+            data=existing_df[["Name", "Prompt"]],
+        )
+        return True

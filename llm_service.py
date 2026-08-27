@@ -2,16 +2,10 @@
 import os
 import litellm
 from dotenv import load_dotenv
-from prompts_store import PROMPTS, default_prompt_name
 
 load_dotenv()
 
-# 从 prompts_store 中读取默认 Prompt（如果存在）
-_default_name = default_prompt_name()
-if _default_name:
-    SYSTEM_PROMPT = PROMPTS.get(_default_name)
-else:
-    SYSTEM_PROMPT = "你是一个通用的评估助手。请根据提供的信息生成评估报告。"
+SYSTEM_PROMPT = "你是一个通用的评估助手。请根据提供的信息生成评估报告。"
 
 
 def evaluate_property(model_name: str, listing_text: str, custom_api_key: str = None, system_prompt: str = None) -> str:
