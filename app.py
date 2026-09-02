@@ -51,13 +51,38 @@ st.markdown("输入 `athome.lu` / `wortimmo.lu` 等房源链接，一键生成�
 # 侧边栏：模型配置
 with st.sidebar:
 
-    passcode = st.text_input(
-        "访问口令",
-        type="password",
-        help="请输入访问口令"
-    )
     expected_passcode = os.getenv("PASSCODE", "")
-    access_granted = bool(expected_passcode) and hmac.compare_digest(passcode, expected_passcode)
+
+    if "passcode_verified" not in st.session_state:
+        st.session_state["passcode_verified"] = False
+    if "passcode_checked_value" not in st.session_state:
+        st.session_state["passcode_checked_value"] = ""
+
+    passcode_col, verify_col = st.columns([4, 1.3], vertical_alignment="center")
+    with passcode_col:
+        passcode = st.text_input(
+            "访问口令",
+            type="password",
+            help="请输入访问口令"
+        )
+
+    with verify_col:
+        verify_passcode = st.button("校验", use_container_width=True)
+
+    if passcode != st.session_state.get("passcode_checked_value", ""):
+        st.session_state["passcode_verified"] = False
+
+    if verify_passcode:
+        st.session_state["passcode_checked_value"] = passcode
+        st.session_state["passcode_verified"] = bool(expected_passcode) and hmac.compare_digest(passcode, expected_passcode)
+        if st.session_state["passcode_verified"]:
+            st.success("✅ 口令正确")
+        else:
+            st.warning("❌ 口令不正确")
+
+    access_granted = bool(expected_passcode) and bool(st.session_state.get("passcode_verified", False))
+    if passcode and not access_granted:
+        st.caption("请先点击“校验”确认访问口令。")
 
     st.header("⚙️ 模型配置")
     
@@ -67,6 +92,7 @@ with st.sidebar:
             "gemini/gemini-3.6-flash",
             "gemini/gemini-1.5-pro",
             "deepseek/deepseek-chat",
+            "deepseek/deepseek-v4-flash",
             "gpt-4o-mini",
             "gpt-4o"
         ],
