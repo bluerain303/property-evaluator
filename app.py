@@ -90,11 +90,8 @@ with st.sidebar:
         "选择 AI 模型",
         options=[
             "gemini/gemini-3.6-flash",
-            "gemini/gemini-1.5-pro",
-            "deepseek/deepseek-chat",
             "deepseek/deepseek-v4-flash",
-            "gpt-4o-mini",
-            "gpt-4o"
+            "deepseek/deepseek-v4-pro"
         ],
         index=0,
         help="支持各主流模型统一接口"
