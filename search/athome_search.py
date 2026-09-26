@@ -10,6 +10,10 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import pandas as pd
 import requests
+from search.property_details import (
+    DEFAULT_DETAIL_DELAY_SECONDS,
+    enrich_listings_with_details,
+)
 
 DEFAULT_HEADERS = {
     "User-Agent": (
@@ -29,6 +33,8 @@ LISTING_COLUMNS = [
     "country", "latitude", "longitude", "photo_count", "listing_url",
     "page", "scraped_at",
 ]
+DEFAULT_MAX_PAGES = 3
+DEFAULT_DELAY_SECONDS = 1.5
 
 
 def _normalize_undefined_literals(html: str, start_index: int) -> str:
@@ -75,15 +81,15 @@ class SearchFilters:
     """atHome URL criteria and optional local DataFrame filters."""
 
     transaction_type: str = "buy"
-    property_types: List[str] = field(default_factory=lambda: ["flat", "house"])
-    price_min: Optional[int] = None
-    price_max: Optional[int] = None
-    surface_min: Optional[int] = None
+    property_types: List[str] = field(default_factory=lambda: ["flat", "house", "new-property"])
+    price_min: Optional[int] = 800000
+    price_max: Optional[int] = 1300000
+    surface_min: Optional[int] = 90
     surface_max: Optional[int] = None
-    bedrooms_min: Optional[int] = None
-    bedrooms_max: Optional[int] = None
+    bedrooms_min: Optional[int] = 3
+    bedrooms_max: Optional[int] = 5
     exclude_borders: bool = True
-    sort_by: str = "date_desc"
+    sort_by: str = "price_asc"
     loc: Optional[str] = "L2-luxembourg"
     q: Optional[str] = None
     max_price_per_m2: Optional[float] = None
@@ -325,8 +331,8 @@ def apply_dataframe_filters(df: pd.DataFrame, filters: SearchFilters) -> pd.Data
 
 def scrape_athome_search(
     search_url: str,
-    max_pages: int = 3,
-    delay_seconds: float = 1.5,
+    max_pages: int = DEFAULT_MAX_PAGES,
+    delay_seconds: float = DEFAULT_DELAY_SECONDS,
     session: Optional[requests.Session] = None,
 ) -> pd.DataFrame:
     """Fetch paginated results from an atHome search URL into a DataFrame."""
@@ -383,11 +389,14 @@ def scrape_athome_search(
 
 def search_athome(
     filters: SearchFilters,
-    max_pages: int = 3,
-    delay_seconds: float = 1.5,
+    max_pages: int = DEFAULT_MAX_PAGES,
+    delay_seconds: float = DEFAULT_DELAY_SECONDS,
     session: Optional[requests.Session] = None,
+    include_details: bool = True,
+    detail_session: Optional[requests.Session] = None,
+    detail_delay_seconds: float = DEFAULT_DETAIL_DELAY_SECONDS,
 ) -> pd.DataFrame:
-    """Search atHome using criteria, then return locally filtered listings."""
+    """Search atHome, enrich each result from its detail page, then filter locally."""
     search_url = build_athome_url(filters)
     listings = scrape_athome_search(
         search_url=search_url,
@@ -395,4 +404,10 @@ def search_athome(
         delay_seconds=delay_seconds,
         session=session,
     )
+    if include_details:
+        listings = enrich_listings_with_details(
+            listings,
+            session=detail_session,
+            delay_seconds=detail_delay_seconds,
+        )
     return apply_dataframe_filters(listings, filters)

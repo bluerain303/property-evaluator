@@ -4,7 +4,12 @@ from typing import Callable, Optional, TypeVar
 
 import pandas as pd
 
-from search.athome_search import SearchFilters, search_athome
+from search.athome_search import (
+    DEFAULT_DELAY_SECONDS,
+    DEFAULT_MAX_PAGES,
+    SearchFilters,
+    search_athome,
+)
 
 T = TypeVar("T")
 
@@ -87,39 +92,71 @@ def _ask_bool(label: str, default: bool) -> bool:
 
 def collect_search_criteria() -> tuple[SearchFilters, int, float, Optional[str]]:
     """Prompt for search criteria and return filters and run options."""
+    defaults = SearchFilters()
     print("atHome.lu property search. Press Enter to accept a shown default.")
-    transaction_type = _ask_value("Transaction (buy/rent)", "buy", _parse_choice("buy", "rent"))
+    transaction_type = _ask_value(
+        "Transaction (buy/rent)", defaults.transaction_type, _parse_choice("buy", "rent")
+    )
     property_types = _ask_value(
         "Property types, comma-separated (flat, house, new-property)",
-        "flat,house",
+        ",".join(defaults.property_types),
         _parse_csv_list,
     )
-    price_min = _ask_value("Minimum price in EUR (blank for none)", parser=_parse_nonnegative_int, optional=True)
-    price_max = _ask_value("Maximum price in EUR (blank for none)", parser=_parse_nonnegative_int, optional=True)
-    surface_min = _ask_value("Minimum surface in m2 (blank for none)", parser=_parse_nonnegative_int, optional=True)
+    price_min = _ask_value(
+        "Minimum price in EUR (blank for none)",
+        str(defaults.price_min) if defaults.price_min is not None else None,
+        _parse_nonnegative_int,
+        optional=True,
+    )
+    price_max = _ask_value(
+        "Maximum price in EUR (blank for none)",
+        str(defaults.price_max) if defaults.price_max is not None else None,
+        _parse_nonnegative_int,
+        optional=True,
+    )
+    surface_min = _ask_value(
+        "Minimum surface in m2 (blank for none)",
+        str(defaults.surface_min) if defaults.surface_min is not None else None,
+        _parse_nonnegative_int,
+        optional=True,
+    )
     surface_max = _ask_value("Maximum surface in m2 (blank for none)", parser=_parse_nonnegative_int, optional=True)
-    bedrooms_min = _ask_value("Minimum bedrooms (blank for none)", parser=_parse_nonnegative_int, optional=True)
-    bedrooms_max = _ask_value("Maximum bedrooms (blank for none)", parser=_parse_nonnegative_int, optional=True)
+    bedrooms_min = _ask_value(
+        "Minimum bedrooms (blank for none)",
+        str(defaults.bedrooms_min) if defaults.bedrooms_min is not None else None,
+        _parse_nonnegative_int,
+        optional=True,
+    )
+    bedrooms_max = _ask_value(
+        "Maximum bedrooms (blank for none)",
+        str(defaults.bedrooms_max) if defaults.bedrooms_max is not None else None,
+        _parse_nonnegative_int,
+        optional=True,
+    )
     loc = _ask_value(
         "atHome location code (type none to omit)",
-        "L2-luxembourg",
+        defaults.loc,
         _parse_optional_text,
         optional=True,
     )
     geo_hash = _ask_value("Optional atHome geo hash (blank to omit)", optional=True)
     sort_by = _ask_value(
         "Sort order (date_desc/price_asc/price_desc/srf_desc)",
-        "date_desc",
+        defaults.sort_by,
         _parse_choice("date_desc", "price_asc", "price_desc", "srf_desc"),
     )
-    exclude_borders = _ask_bool("Exclude listings outside Luxembourg", True)
+    exclude_borders = _ask_bool("Exclude listings outside Luxembourg", defaults.exclude_borders)
     cities = _ask_value("Filter cities, comma-separated (blank for none)", parser=_parse_csv_list, optional=True)
     postal_codes = _ask_value("Filter postal codes, comma-separated (blank for none)", parser=_parse_csv_list, optional=True)
     energy_classes = _ask_value("Allowed energy classes, comma-separated (blank for none)", parser=_parse_csv_list, optional=True)
     max_price_per_m2 = _ask_value("Maximum price per m2 (blank for none)", parser=_parse_nonnegative_float, optional=True)
-    exclude_price_on_request = _ask_bool("Exclude listings without a numeric price", True)
-    max_pages = _ask_value("Maximum result pages", "2", _parse_positive_int)
-    delay_seconds = _ask_value("Delay between pages in seconds", "1.5", _parse_nonnegative_float)
+    exclude_price_on_request = _ask_bool(
+        "Exclude listings without a numeric price", defaults.exclude_price_on_request
+    )
+    max_pages = _ask_value("Maximum result pages", str(DEFAULT_MAX_PAGES), _parse_positive_int)
+    delay_seconds = _ask_value(
+        "Delay between pages in seconds", str(DEFAULT_DELAY_SECONDS), _parse_nonnegative_float
+    )
     csv_path = _ask_value("CSV output path (blank to skip export)", optional=True)
 
     for minimum, maximum, label in (

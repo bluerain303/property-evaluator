@@ -19,6 +19,10 @@ from search.athome_search import (
     search_athome,
     set_url_page,
 )
+from search.property_details import (
+    enrich_listings_with_details,
+    extract_property_details_from_html,
+)
 
 
 def listing(listing_id: str, city: str = "Luxembourg", price: int = 450000) -> dict:
@@ -151,9 +155,137 @@ class AtHomeSearchTests(unittest.TestCase):
             max_pages=1,
             delay_seconds=0,
             session=session,
+            include_details=False,
         )
 
         self.assertEqual(frame["listing_id"].tolist(), ["one"])
+
+    def test_detail_parser_extracts_json_ld_property_facts(self) -> None:
+        structured_listing = {
+            "@type": "RealEstateListing",
+            "name": "Apartment for sale",
+            "description": "Renovated apartment",
+            "about": {
+                "@type": "Apartment",
+                "numberOfRooms": 7,
+                "numberOfBedrooms": 3,
+                "numberOfBathroomsTotal": 1,
+                "yearBuilt": 2026,
+                "floorSize": {"value": 89, "unitCode": "MTK"},
+                "address": {
+                    "streetAddress": "10 Rue Example",
+                    "postalCode": "1234",
+                    "addressLocality": "Luxembourg-Merl",
+                    "addressCountry": "LU",
+                },
+                "geo": {"latitude": 49.6, "longitude": 6.09},
+                "additionalProperty": [
+                    {"name": "Energy class", "value": "E"},
+                    {"name": "Thermal insulation class", "value": "F"},
+                    {"name": "Toilets", "value": 1},
+                    {"name": "Parking spaces", "value": 2},
+                ],
+            },
+            "offers": {"price": 1155000, "priceCurrency": "EUR"},
+        }
+        html = (
+            '<script type="application/ld+json">'
+            f"{json.dumps(structured_listing)}"
+            "</script>"
+        )
+
+        details = extract_property_details_from_html(html)
+
+        self.assertEqual(details["price"], 1155000)
+        self.assertEqual(details["surface_m2"], 89)
+        self.assertEqual(details["bedrooms"], 3)
+        self.assertEqual(details["bathrooms"], 1)
+        self.assertEqual(details["toilets"], 1)
+        self.assertEqual(details["parking_spaces"], 2)
+        self.assertEqual(details["energy_class"], "E")
+        self.assertEqual(details["thermal_insulation_class"], "F")
+        self.assertEqual(details["city"], "Luxembourg-Merl")
+        self.assertEqual(details["postal_code"], "1234")
+        self.assertIn("10 Rue Example", details["address"])
+
+    def test_detail_parser_falls_back_to_visible_characteristics(self) -> None:
+        html = """
+        <div class="characteristics-item">
+          <span class="characteristics-item-label">Sale price</span>
+          <span class="characteristics-item-value">€1,155,000</span>
+        </div>
+        <div class="characteristics-item">
+          <span class="characteristics-item-label">Number of bedrooms</span>
+          <span class="characteristics-item-value">3</span>
+        </div>
+        <div class="characteristics-item">
+          <span class="characteristics-item-label">Separate toilets</span>
+          <span class="characteristics-item-value">1</span>
+        </div>
+        <div class="characteristics-item">
+          <span class="characteristics-item-label">Energy class</span>
+          <span class="characteristics-item-value">E</span>
+        </div>
+        """
+
+        details = extract_property_details_from_html(html)
+
+        self.assertEqual(details["price"], 1155000)
+        self.assertEqual(details["bedrooms"], 3)
+        self.assertEqual(details["toilets"], 1)
+        self.assertEqual(details["energy_class"], "E")
+
+    def test_detail_parser_reads_headline_price_and_ignores_finance_amount(self) -> None:
+        html = """
+        <h1>Apartment for sale</h1>
+        <div class="property-card-price-container">
+          <span class="property-card-price">€1,155,000</span>
+        </div>
+        <a href="#finance">Finance this property from €4,200/month</a>
+        """
+
+        details = extract_property_details_from_html(html)
+
+        self.assertEqual(details["price"], 1155000)
+
+    def test_detail_enrichment_keeps_rows_when_one_request_fails(self) -> None:
+        listings = pd.DataFrame([
+            {"listing_id": "one", "listing_url": "https://www.athome.lu/en/id-one.html", "city": None},
+            {"listing_id": "two", "listing_url": "https://www.athome.lu/en/id-two.html", "city": None},
+        ])
+        with (
+            patch("search.property_details.fetch_property_details", side_effect=[
+                {"city": "Luxembourg", "toilets": 1},
+                RuntimeError("temporarily unavailable"),
+            ]),
+            patch("search.property_details.time.sleep"),
+        ):
+            enriched = enrich_listings_with_details(listings, delay_seconds=0.1)
+
+        self.assertEqual(len(enriched), 2)
+        self.assertEqual(enriched.loc[0, "city"], "Luxembourg")
+        self.assertEqual(enriched.loc[0, "toilets"], 1)
+        self.assertEqual(enriched.loc[0, "detail_fetch_status"], "success")
+        self.assertEqual(enriched.loc[1, "detail_fetch_status"], "failed")
+        self.assertIn("temporarily unavailable", enriched.loc[1, "detail_error"])
+        self.assertIn("parking_spaces", enriched.columns)
+        self.assertIn("energy_class", enriched.columns)
+
+    def test_search_enriches_before_applying_local_filters(self) -> None:
+        raw_results = pd.DataFrame([
+            {"listing_id": "one", "listing_url": "https://www.athome.lu/en/id-one.html", "city": None}
+        ])
+        enriched_results = raw_results.assign(city="Luxembourg", energy_class="B")
+        with (
+            patch("search.athome_search.scrape_athome_search", return_value=raw_results),
+            patch("search.athome_search.enrich_listings_with_details", return_value=enriched_results) as enrich,
+        ):
+            results = search_athome(
+                SearchFilters(cities=["Luxembourg"]), max_pages=1, detail_delay_seconds=0
+            )
+
+        self.assertEqual(results["listing_id"].tolist(), ["one"])
+        enrich.assert_called_once()
 
     def test_malformed_page_reports_response_and_parse_context(self) -> None:
         html = '<script>window.__INITIAL_STATE__ = {"suggestedServices":<<<};</script>'
@@ -174,10 +306,23 @@ class AtHomeSearchTests(unittest.TestCase):
             filters, max_pages, delay_seconds, csv_path = cli.collect_search_criteria()
 
         self.assertEqual(filters.transaction_type, "buy")
-        self.assertEqual(filters.property_types, ["flat", "house"])
+        self.assertEqual(filters.property_types, ["flat", "house", "new-property"])
+        self.assertEqual(filters.price_min, 800000)
+        self.assertEqual(filters.price_max, 1300000)
+        self.assertEqual(filters.surface_min, 90)
+        self.assertIsNone(filters.surface_max)
+        self.assertEqual(filters.bedrooms_min, 3)
+        self.assertEqual(filters.bedrooms_max, 5)
+        self.assertTrue(filters.exclude_borders)
         self.assertEqual(filters.loc, "L2-luxembourg")
         self.assertIsNone(filters.q)
-        self.assertEqual(max_pages, 2)
+        self.assertEqual(filters.sort_by, "price_asc")
+        self.assertIsNone(filters.max_price_per_m2)
+        self.assertIsNone(filters.cities)
+        self.assertIsNone(filters.postal_codes)
+        self.assertIsNone(filters.allowed_energy_classes)
+        self.assertTrue(filters.exclude_price_on_request)
+        self.assertEqual(max_pages, 3)
         self.assertEqual(delay_seconds, 1.5)
         self.assertIsNone(csv_path)
 
