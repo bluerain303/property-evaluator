@@ -7,6 +7,7 @@ from scraper import extract_listing_content
 from llm_service import evaluate_property
 import json
 import urllib.parse
+import pandas as pd
 from google_sheet_connector import GoogleSheetConnector
 from search.athome_search import (
     DEFAULT_DELAY_SECONDS,
@@ -27,6 +28,7 @@ SEARCH_DISPLAY_COLUMNS = [
     "thermal_insulation_class",
     "is_new_build",
     "listing_url",
+    "map_url",
     "city",
     "postal_code",
     "country",
@@ -41,6 +43,12 @@ SEARCH_DISPLAY_COLUMNS = [
     "property_floor",
     "description",
 ]
+
+
+def build_google_maps_url(latitude, longitude):
+    if pd.isna(latitude) or pd.isna(longitude):
+        return None
+    return f"https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
 
 
 # 你的 Google Sheet 链接（替换成实际表格 URL）
@@ -588,15 +596,25 @@ with search_tab:
     search_results = st.session_state["property_search_results"]
     if search_results is not None:
         st.write(f"共找到 {len(search_results)} 条房源。")
+        display_results = search_results.copy()
+        display_results["map_url"] = [
+            build_google_maps_url(row.get("latitude"), row.get("longitude"))
+            for _, row in display_results.iterrows()
+        ]
         visible_columns = [
-            column for column in SEARCH_DISPLAY_COLUMNS if column in search_results.columns
+            column for column in SEARCH_DISPLAY_COLUMNS
+            if column in display_results.columns
         ]
         st.dataframe(
-            search_results.loc[:, visible_columns],
+            display_results.loc[:, visible_columns],
             column_config={
                 "listing_url": st.column_config.LinkColumn(
                     "URL",
                     display_text="Link",
+                ),
+                "map_url": st.column_config.LinkColumn(
+                    "Map",
+                    display_text="Map",
                 ),
             },
             width="stretch",
