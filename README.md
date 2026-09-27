@@ -1,6 +1,10 @@
 # property-evaluator
 a website to evaluate provided property information
 
+
+# 2026-09-26 ==============
+add auto search engine
+
 # 2026-08-23 ==============
 1. Create python venv
     command: python3 -m venv venv-pe
