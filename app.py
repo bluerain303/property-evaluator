@@ -465,7 +465,7 @@ with search_tab:
                 st.session_state[key] = default_value
         st.session_state["_search_numeric_defaults_initialized"] = True
 
-    with st.form("athome_search_form"):
+    with st.expander("搜索参数", expanded=False):
         transaction_type = st.selectbox(
             "交易类型",
             ["buy", "rent"],
@@ -541,12 +541,12 @@ with search_tab:
             "分页间隔 (秒)", min_value=0.0, value=DEFAULT_DELAY_SECONDS, step=0.5
         )
 
-        search_submitted = st.form_submit_button(
-            "搜索房源",
-            type="primary",
-            disabled=not access_granted,
-            use_container_width=True,
-        )
+    search_submitted = st.button(
+        "搜索房源",
+        type="primary",
+        disabled=not access_granted,
+        use_container_width=True,
+    )
 
     if not access_granted:
         st.info("请先在侧边栏验证访问口令，再使用房源搜索。")
