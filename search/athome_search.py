@@ -313,8 +313,12 @@ def apply_dataframe_filters(df: pd.DataFrame, filters: SearchFilters) -> pd.Data
         ]
     if filters.cities and "city" in filtered:
         target_cities = {city.strip().casefold() for city in filters.cities if city.strip()}
+        city_values = filtered["city"].fillna("").astype(str).str.strip().str.casefold()
+        city_matches = city_values.isin(target_cities)
+        for city in target_cities:
+            city_matches |= city_values.str.startswith(f"{city}-")
         filtered = filtered[
-            filtered["city"].fillna("").astype(str).str.strip().str.casefold().isin(target_cities)
+            city_matches
         ]
     if filters.postal_codes and "postal_code" in filtered:
         target_codes = {str(code).strip() for code in filters.postal_codes if str(code).strip()}

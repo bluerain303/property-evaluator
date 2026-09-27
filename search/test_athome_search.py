@@ -133,6 +133,16 @@ class AtHomeSearchTests(unittest.TestCase):
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered.iloc[0]["city"], "Luxembourg")
 
+    def test_city_filter_matches_locality_with_commune_prefix(self) -> None:
+        frame = pd.DataFrame([
+            {"city": "Luxembourg-Merl"},
+            {"city": "Esch-sur-Alzette"},
+        ])
+
+        filtered = apply_dataframe_filters(frame, SearchFilters(cities=["Luxembourg"]))
+
+        self.assertEqual(filtered["city"].tolist(), ["Luxembourg-Merl"])
+
     def test_scrape_paginates_and_deduplicates(self) -> None:
         session = FakeSession([
             page_html([listing("one"), listing("two", city="Esch")]),

@@ -43,6 +43,41 @@ SEARCH_DISPLAY_COLUMNS = [
     "property_floor",
     "description",
 ]
+ATHOME_AREA_CODES = {
+    "L2-luxembourg": "全卢森堡",
+    "L4-centre": "中部",
+    "L4-sud": "南部",
+    "L9-luxembourg": "卢森堡区域",
+}
+LUXEMBOURG_CITIES = [
+    "Bascharage",
+    "Bettembourg",
+    "Bertrange",
+    "Clervaux",
+    "Differdange",
+    "Diekirch",
+    "Dudelange",
+    "Echternach",
+    "Esch-sur-Alzette",
+    "Ettelbruck",
+    "Grevenmacher",
+    "Hesperange",
+    "Junglinster",
+    "Luxembourg",
+    "Luxembourg-Merl",
+    "Mamer",
+    "Mersch",
+    "Mondorf-les-Bains",
+    "Pétange",
+    "Remich",
+    "Sandweiler",
+    "Sanem",
+    "Schifflange",
+    "Steinsel",
+    "Strassen",
+    "Walferdange",
+    "Wiltz",
+]
 
 
 def build_google_maps_url(latitude, longitude):
@@ -512,8 +547,33 @@ with search_tab:
                 "最多卧室数", min_value=0, step=1, key="search_bedrooms_max"
             )
 
-        location_code = st.text_input(
-            "atHome 地区代码", value=search_defaults.loc or "", key="search_location_code"
+        default_area_codes = (
+            [code.strip() for code in search_defaults.loc.split(",") if code.strip()]
+            if search_defaults.loc
+            else []
+        )
+        area_codes = st.multiselect(
+            "atHome 地区",
+            options=list(ATHOME_AREA_CODES),
+            default=default_area_codes,
+            format_func=lambda code: f"{ATHOME_AREA_CODES[code]} ({code})",
+            key="search_area_codes",
+            help="可以多选；列表使用项目参考中记录的 atHome 地区代码。",
+        )
+        previous_results = st.session_state.get("property_search_results")
+        observed_cities = (
+            previous_results["city"].dropna().astype(str).str.strip().tolist()
+            if previous_results is not None and "city" in previous_results.columns
+            else []
+        )
+        city_options = sorted(set(LUXEMBOURG_CITIES).union(
+            city for city in observed_cities if city
+        ), key=str.casefold)
+        selected_cities = st.multiselect(
+            "城市 / 市镇",
+            options=city_options,
+            key="search_cities",
+            help="可多选；搜索结果中出现的新城市也会加入选项。",
         )
 
         sort_options = ["date_desc", "price_asc", "price_desc", "srf_desc"]
@@ -575,7 +635,8 @@ with search_tab:
                 bedrooms_max=bedrooms_max,
                 exclude_borders=exclude_borders,
                 sort_by=sort_by,
-                loc=location_code.strip() or None,
+                loc=",".join(area_codes) or None,
+                cities=selected_cities or None,
                 exclude_price_on_request=exclude_price_on_request,
             )
             st.session_state["property_search_error"] = ""
