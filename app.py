@@ -26,13 +26,13 @@ SEARCH_DISPLAY_COLUMNS = [
     "energy_class",
     "thermal_insulation_class",
     "is_new_build",
+    "listing_url",
     "city",
     "postal_code",
     "country",
     "latitude",
     "longitude",
     "photo_count",
-    "listing_url",
     "page",
     "toilets",
     "parking_spaces",
@@ -593,7 +593,13 @@ with search_tab:
         ]
         st.dataframe(
             search_results.loc[:, visible_columns],
-            use_container_width=True,
+            column_config={
+                "listing_url": st.column_config.LinkColumn(
+                    "URL",
+                    display_text="Link",
+                ),
+            },
+            width="stretch",
             hide_index=True,
             height=600,
         )
